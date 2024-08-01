@@ -1,3 +1,0 @@
-/home/arun/my_github/visual_odometry/build/CMakeFiles/vo.dir
-/home/arun/my_github/visual_odometry/build/CMakeFiles/edit_cache.dir
-/home/arun/my_github/visual_odometry/build/CMakeFiles/rebuild_cache.dir
