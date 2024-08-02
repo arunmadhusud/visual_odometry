@@ -3,7 +3,7 @@
 This is a monocular visual odometry implementation using OpenCV and c++. Steps involved in the implementation are:
 1. Feature detection using FAST
 2. Feature tracking using Lucas-Kanade Optical Flow
-3. Compute Essential Matrix using RANSAC and recover pose
+3. Compute Essential Matrix using tracked features and recover pose
 4. Estimate absolute scale using GPS data.
 
 The scale information is obtained from GPS data. The GPS data is in the form of latitude, longitude and altitude. The GPS data is converted to UTM coordinates and the distance between two consecutive UTM coordinates is calculated. This distance is used to estimate the scale factor.
