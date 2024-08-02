@@ -33,7 +33,7 @@ Demo video is shown below:
 
 [![Demo Video](results/vo.gif)](results/vo.gif)
 
-## acknowledgements
+## Acknowledgements
 The code is inspired from the following sources:
-1. [Monocular Visual Odometry using OpenCV](https://avisingh599.github.io/vision/monocular-vo/)
+1. Avi Singh's blog on [Monocular Visual Odometry using OpenCV](https://avisingh599.github.io/vision/monocular-vo/)
 2. The UTM conversion code is taken from [here](http://www.gpsy.com/gpsinfo/geotoutm/gantz/)
