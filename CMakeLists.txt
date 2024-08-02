@@ -20,7 +20,7 @@ find_package(yaml-cpp REQUIRED)
 include_directories(${yaml-cpp_INCLUDE_DIRS})
 
 # Executables for exercise
-add_executable(vo vo_main.cpp LatLong-UTMconversion.cpp)
+add_executable(vo src/vo_main.cpp src/LatLong-UTMconversion.cpp)
 
 # Link libraries
 target_link_libraries(vo ${OpenCV_LIBRARIES} yaml-cpp)
