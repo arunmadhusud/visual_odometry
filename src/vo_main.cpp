@@ -90,7 +90,9 @@ int main(int argc, char** argv) {
         E = cv::findEssentialMat(currFeatures, prevFeatures, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
         cv::recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
 
-        scale = getAbsoluteScale(numFrame, gps_data); // Get the scale from the GPS data
+        double gps_distance = getAbsoluteScale(numFrame, gps_data); // Get the absolute distance from GPS
+        double vo_distance = cv::norm(t); // Get the distance from VO
+        scale = gps_distance / vo_distance;
         // std::cout << "Scale is " << scale << std::endl;
 
         if ((scale > 0.1) && (t.at<double>(2) > t.at<double>(0)) && (t.at<double>(2) > t.at<double>(1))) {
