@@ -8,7 +8,7 @@ int main(int argc, char** argv) {
     cv::Mat img_1, img_2;
     cv::Mat R_f, t_f; // Final rotation and translation vectors
     
-    YAML::Node config = YAML::LoadFile("/home/arun/SFND_Camera/vo/config.yaml");
+    YAML::Node config = YAML::LoadFile("../config.yaml");
     std::string root_path = config["image_data"].as<std::string>();
     std::string true_pose = config["true_pose"].as<std::string>();
     std::string gps_data = config["gps_data"].as<std::string>();

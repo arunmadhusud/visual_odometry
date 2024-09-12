@@ -1,0 +1,24 @@
+# Ignore the build directory
+build/
+
+# Ignore Git-related files
+.git/
+.gitignore
+
+# Ignore any logs
+*.log
+
+# Ignore results (if not needed inside the container)
+results/
+
+# You can also ignore other temporary files
+*.tmp
+
+# Ignore any old files
+old_files/
+
+# Ignore data_dir (if you want to mount them instead)
+data_dir/
+
+# Ignore VSCode workspace settings
+.vscode/
