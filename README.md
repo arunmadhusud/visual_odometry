@@ -33,6 +33,7 @@ docker build -t vo_image . // build the docker image
 xhost +local:root // allow the docker container to display the output
 docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v /path/to/dataset:/app/data_dir vo_image // run the docker container
 ```
+Don't forget to change the path to the dataset when running the docker container.
 
 
 
