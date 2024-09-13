@@ -31,7 +31,7 @@ Make sure to change the path of the dataset, gps data and ground truth data in t
 ```
 docker build -t vo_image . // build the docker image
 xhost +local:root // allow the docker container to display the output
-docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v /path/to/visual_odometry:/app/data_dir vo_image // run the docker container
+docker run -it --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -v /path/to/dataset:/app/data_dir vo_image // run the docker container
 ```
 
 
