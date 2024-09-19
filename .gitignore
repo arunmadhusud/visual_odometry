@@ -1,2 +1,4 @@
 build*/
 data_dir/
+DBoW2/
+small_voc.yml.gz

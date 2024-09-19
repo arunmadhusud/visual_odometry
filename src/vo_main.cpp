@@ -1,8 +1,22 @@
 #include <iostream>
 #include <vector>
 #include "vo_feature.h"
+#include "DBoW2.h" // defines OrbVocabulary and OrbDatabase
 
 #define MIN_NUM_FEAT 2000 // Minimum number of features to track
+
+using namespace DBoW2;
+using namespace std;
+
+void changeStructure(const cv::Mat &plain, vector<cv::Mat> &out)
+{
+    out.resize(plain.rows);
+
+    for (int i = 0; i < plain.rows; i++)
+    {
+        out[i] = plain.row(i);
+    }
+}
 
 int main(int argc, char** argv) {
     cv::Mat img_1, img_2;
@@ -55,6 +69,11 @@ int main(int argc, char** argv) {
     E = cv::findEssentialMat(points2, points1, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
     cv::recoverPose(E, points2, points1, R, t, focal, pp, mask);
 
+    // Initialize ORB for loop detection
+    cv::Ptr<cv::ORB> orb = cv::ORB::create();
+    OrbVocabulary voc("../small_voc.yml.gz");
+    OrbDatabase db(voc, false, 0);
+
     cv::Mat prevImage = img_2;
     cv::Mat currImage;
     std::vector<cv::Point2f> prevFeatures = points2;
@@ -106,6 +125,21 @@ int main(int argc, char** argv) {
         if (prevFeatures.size() < MIN_NUM_FEAT) {
             featureDetection(prevImage, prevFeatures);
             featureTracking(prevImage, currImage, prevFeatures, currFeatures, status);
+        }
+
+        // ORB loop detection
+        vector<cv::KeyPoint> keypoints;
+        cv::Mat descriptors;
+        vector<cv::Mat> features;
+        orb->detectAndCompute(currImage_c, cv::Mat(), keypoints, descriptors);
+        changeStructure(descriptors, features);
+        db.add(features);
+
+        QueryResults ret;
+        db.query(features, ret, 2);
+        if (ret.size() > 0 && (ret[0].Id - ret[1].Id > 20) && ret[1].Score > 0.5) {
+            std::cout << "Loop detected! current frame: " << ret[0].Id << " Best match: " << ret[1].Id << " Score: " << ret[1].Score << std::endl;
+            std::cout << "difference: " << ret[0].Id - ret[1].Id << std::endl;
         }
         
         cv::Mat img_keypoints = currImage_c.clone();
