@@ -78,10 +78,10 @@ double getAbsoluteScale(int frame_id, std::string gps_data) {
             lons.push_back(lon);
             alts.push_back(alt);
         }
-
+    
         myfile_prev.close();
     } else {
-        std::cerr << "Unable to open file" << std::endl;
+        std::cerr << "Unable to open GPS file" << std::endl;
         return -1; // Use -1 or some other error code for failure
     }
 
@@ -128,16 +128,32 @@ void truePose(int frame_id, double& x, double& y, double& z, std::string true_po
         }
         myfile.close();
     } else {
-        std::cerr << "Unable to open file" << std::endl;
+        std::cerr << "Unable to open True pose file" << std::endl;
     }
 }
 
 
-// Function to detect features in an image using FAST algorithm
-void featureDetection(const cv::Mat& img_1, std::vector<cv::Point2f>& points1) {
-    std::vector<cv::KeyPoint> keypoints_1;
-    int fast_threshold = 20; // Threshold for FAST algorithm
-    bool nonmaxSuppression = true;
-    cv::FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression); // Detect keypoints
-    cv::KeyPoint::convert(keypoints_1, points1, std::vector<int>()); // Convert keypoints to Point2f
+// // Function to detect features in an image using FAST algorithm
+// void featureDetection(const cv::Mat& img_1, std::vector<cv::Point2f>& points1) {
+//     std::vector<cv::KeyPoint> keypoints_1;
+//     int fast_threshold = 20; // Threshold for FAST algorithm
+//     bool nonmaxSuppression = true;
+//     cv::FAST(img_1, keypoints_1, fast_threshold, nonmaxSuppression); // Detect keypoints
+//     cv::KeyPoint::convert(keypoints_1, points1, std::vector<int>()); // Convert keypoints to Point2f
+// }
+
+
+// Function to detect features in an image using Shi-Tomasi Corner Detector (Good Features to Track)
+void featureDetection(const cv::Mat& img, std::vector<cv::Point2f>& points) {
+    int max_corners = 2000;
+    double quality_level = 0.01;
+    double min_distance = 15;
+
+    cv::goodFeaturesToTrack(img, points, max_corners, quality_level, min_distance);
+
+    if (points.size() < 1000) {
+        // If we don't have enough features, lower the quality threshold
+        quality_level /= 2;
+        cv::goodFeaturesToTrack(img, points, max_corners, quality_level, min_distance);
+    }
 }

@@ -2,11 +2,29 @@
 #include <vector>
 #include "vo_feature.h"
 #include "DBoW2.h" // defines OrbVocabulary and OrbDatabase
+#include <eigen3/Eigen/Geometry>
+#include <opencv2/core/eigen.hpp>
+#include <map>
 
 #define MIN_NUM_FEAT 2000 // Minimum number of features to track
 
 using namespace DBoW2;
 using namespace std;
+
+
+// Define a strut to store the rotation and translation vectors
+struct framePose {
+    cv::Mat R;
+    cv::Mat t;
+};
+
+Eigen::Quaterniond rotationMatrixToQuaternion(const cv::Mat &R)
+{
+    Eigen::Matrix3d eigen_R;
+    cv::cv2eigen(R, eigen_R);
+    return Eigen::Quaterniond(eigen_R);
+}
+
 
 void changeStructure(const cv::Mat &plain, vector<cv::Mat> &out)
 {
@@ -19,14 +37,37 @@ void changeStructure(const cv::Mat &plain, vector<cv::Mat> &out)
 }
 
 int main(int argc, char** argv) {
+
     cv::Mat img_1, img_2;
     cv::Mat R_f, t_f; // Final rotation and translation vectors
+    // Map to store frame poses
+    std::map<int, framePose> framePoses;
     
     YAML::Node config = YAML::LoadFile("../config.yaml");
     std::string root_path = config["image_data"].as<std::string>();
     std::string true_pose = config["true_pose"].as<std::string>();
     std::string gps_data = config["gps_data"].as<std::string>();
-
+    
+    std::ofstream g2o_file("../trajectory.g2o");
+    if (!g2o_file.is_open()) {
+        std::cerr << "Error: Unable to open file trajectory.g2o" << std::endl;
+        // Handle the error as needed
+    }
+    // else write the first vertex to the file starting from the origin
+    else {
+        g2o_file << "VERTEX_SE3:QUAT " << "0" << " 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 1.000000" << std::endl;
+    }
+    
+    // write the ground truth to the file groundtruth.txt
+    std::ofstream groundtruth_file("../groundtruth.txt");
+    if (!groundtruth_file.is_open()) {
+        std::cerr << "Error: Unable to open file groundtruth.txt" << std::endl;
+        // Handle the error as needed
+    }
+    // else write the first vertex to the file starting from the origin
+    else {
+        groundtruth_file << "0 0.000000 0.000000 0.000000" << std::endl;
+    }
 
     double scale = 1.00;
     char filename1[200];
@@ -69,6 +110,9 @@ int main(int argc, char** argv) {
     E = cv::findEssentialMat(points2, points1, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
     cv::recoverPose(E, points2, points1, R, t, focal, pp, mask);
 
+    // change R[1][1] to 1
+    // R.at<double>(1, 1) = 1.0;
+
     // Initialize ORB for loop detection
     cv::Ptr<cv::ORB> orb = cv::ORB::create();
     OrbVocabulary voc("../small_voc.yml.gz");
@@ -83,6 +127,38 @@ int main(int argc, char** argv) {
 
     R_f = R.clone();
     t_f = t.clone();
+    framePose firstPose;
+    firstPose.R = R_f.clone();
+    firstPose.t = t_f.clone();
+
+    framePoses[1] = firstPose;
+
+    std::cout << "R: " << R_f << std::endl;
+    std::cout << "t: " << t_f << std::endl;
+
+    // write the first vertex to the file starting from the origin
+    if (g2o_file.is_open()) {
+        Eigen::Quaterniond q = rotationMatrixToQuaternion(R_f);
+        g2o_file << "VERTEX_SE3:QUAT " << "1" << " "
+                // << t_f.at<double>(0) << " " << "0.000000" << " " << t_f.at<double>(2) << " "
+                << t_f.at<double>(0) << " " << t_f.at<double>(1) << " " << t_f.at<double>(2) << " "
+                << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << "\n";
+        // add edge between the first two frames
+        g2o_file << "EDGE_SE3:QUAT " << "0" << " " << "1" << " "
+                // << t_f.at<double>(0) << " " << "0.000000" << " " << t_f.at<double>(2) << " "
+                << t_f.at<double>(0) << " " << t_f.at<double>(1) << " " << t_f.at<double>(2) << " "
+                << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << " "
+                << "1 0 0 0 0 0 "
+                << "1 0 0 0 0 "
+                << "1 0 0 0 "
+                << "1 0 0 "
+                << "1 0 "
+                << "1" << std::endl;    
+    }
+
+    // store the Rf and tf for the previous frame
+    cv::Mat R_prev = R_f.clone();
+    cv::Mat t_prev = t_f.clone();
 
     clock_t begin = clock();
 
@@ -108,15 +184,34 @@ int main(int argc, char** argv) {
 
         E = cv::findEssentialMat(currFeatures, prevFeatures, focal, pp, cv::RANSAC, 0.999, 1.0, mask);
         cv::recoverPose(E, currFeatures, prevFeatures, R, t, focal, pp, mask);
+        // R.at<double>(1, 1) = 1.0;
 
         double gps_distance = getAbsoluteScale(numFrame, gps_data); // Get the absolute distance from GPS
         double vo_distance = cv::norm(t); // Get the distance from VO
         scale = gps_distance / vo_distance;
         // std::cout << "Scale is " << scale << std::endl;
 
+        // Update camera pose if the estimated motion is primarily forward
+        // Conditions:
+        // 1. Scale factor is significant (> 0.1)
+        // 2. Forward motion (z-axis) is greater than lateral (x-axis) and vertical (y-axis) motions
         if ((scale > 0.1) && (t.at<double>(2) > t.at<double>(0)) && (t.at<double>(2) > t.at<double>(1))) {
-            t_f = t_f + scale * (R_f * t);
+            // R and t are the relative rotation and translation of the current frame w.r.t the previous frame
+            // the global tranlsation 
             R_f = R_f * R;
+            // the global rotation
+            t_f =  scale * (R_f * t) + t_f;
+
+            framePose currPose;
+            currPose.R = R_f.clone();
+            currPose.t = t_f.clone();
+            framePoses[numFrame] = currPose;
+
+            // debugging
+            if (numFrame>0){
+                std::cout << "R: " << R_f << std::endl;
+                std::cout << "t: " << t_f << std::endl;              
+            }
         } else {
             // Incorrect translation, pose not updated
         }
@@ -126,6 +221,7 @@ int main(int argc, char** argv) {
             featureDetection(prevImage, prevFeatures);
             featureTracking(prevImage, currImage, prevFeatures, currFeatures, status);
         }
+
 
         // ORB loop detection
         vector<cv::KeyPoint> keypoints;
@@ -140,8 +236,44 @@ int main(int argc, char** argv) {
         if (ret.size() > 0 && (ret[0].Id - ret[1].Id > 20) && ret[1].Score > 0.5) {
             std::cout << "Loop detected! current frame: " << ret[0].Id << " Best match: " << ret[1].Id << " Score: " << ret[1].Score << std::endl;
             std::cout << "difference: " << ret[0].Id - ret[1].Id << std::endl;
+
+            int currFrame = ret[0].Id;
+            int prevFrame = currFrame - 1;
+            int bestMatchFrame = ret[1].Id;
+
+            try {
+                // Calculate relative rotation and translation
+                // cv::Mat R_rel = framePoses[bestMatchFrame].R.t() * framePoses[currFrame].R;
+                // cv::Mat t_rel = framePoses[bestMatchFrame].R.t() * (framePoses[currFrame].t - framePoses[bestMatchFrame].t);
+                cv::Mat R_rel = framePoses[currFrame].R.t() * framePoses[prevFrame].R;
+                cv::Mat t_rel = framePoses[currFrame].R.t() * (framePoses[prevFrame].t - framePoses[currFrame].t);
+
+                // Write the edge to the file
+                if (g2o_file.is_open()) {
+                    Eigen::Quaterniond q_rel = rotationMatrixToQuaternion(R_rel);
+                    g2o_file << "EDGE_SE3:QUAT " << bestMatchFrame << " " << prevFrame << " "
+                            // << t_rel.at<double>(0) << " " << "0.000000" << " " << t_rel.at<double>(2) << " "
+                            << t_rel.at<double>(0) << " " << t_rel.at<double>(1) << " " << t_rel.at<double>(2) << " "
+                            << q_rel.x() << " " << q_rel.y() << " " << q_rel.z() << " " << q_rel.w() << " "
+                            << "100 0 0 0 0 0 "
+                            << "100 0 0 0 0 "
+                            << "100 0 0 0 "
+                            << "100 0 0 "
+                            << "100 0 "
+                            << "100" << std::endl;
+                }
+            } catch (const cv::Exception& e) {
+                // Log the error message and skip the problematic frame
+                std::cerr << "OpenCV exception at frame " << currFrame << ": " << e.what() << std::endl;
+            } catch (const std::exception& e) {
+                // Catch any other standard exceptions
+                std::cerr << "Standard exception at frame " << currFrame << ": " << e.what() << std::endl;
+            }
+
+
+
         }
-        
+                
         cv::Mat img_keypoints = currImage_c.clone();
         // Draw optical flow lines on the image
         for (size_t i = 0; i < prevFeatures.size(); i++) {
@@ -156,9 +288,47 @@ int main(int argc, char** argv) {
         int y = int(t_f.at<double>(2)) + 100;
         cv::circle(traj, cv::Point(x, y), 1, CV_RGB(255, 0, 0), 2);
 
+        if (g2o_file.is_open()) {
+            // std::cout << "Writing to g2o file" << std::endl;
+            Eigen::Quaterniond q = rotationMatrixToQuaternion(R_f);
+            g2o_file << "VERTEX_SE3:QUAT " << numFrame << " "
+                    // << t_f.at<double>(0) << " " << "0.000000" << " " << t_f.at<double>(2) << " "
+                    << t_f.at<double>(0) << " " << t_f.at<double>(1) << " " << t_f.at<double>(2) << " "
+                    << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << "\n";
+            
+            std::cout << "quat" << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
+            
+            // find the relative transformation between the current frame and the previous frame
+            cv::Mat R_rel = R_prev.t() * R_f;
+            cv::Mat t_rel = R_prev.t() * (t_f - t_prev);
+
+            // write the edge to the file
+            Eigen::Quaterniond q_rel = rotationMatrixToQuaternion(R_rel);
+            g2o_file << "EDGE_SE3:QUAT " << (numFrame-1) << " " << numFrame << " "
+                    // << t_rel.at<double>(0) << " " << "0.000000" << " " << t_rel.at<double>(2) << " "
+                    << t_rel.at<double>(0) << " " << t_rel.at<double>(1) << " " << t_rel.at<double>(2) << " "
+                    << q_rel.x() << " " << q_rel.y() << " " << q_rel.z() << " " << q_rel.w() << " "
+                    << "1 0 0 0 0 0 "
+                    << "1 0 0 0 0 "
+                    << "1 0 0 0 "
+                    << "1 0 0 "
+                    << "1 0 "
+                    << "1" << std::endl;
+            
+            // store the Rf and tf for the previous frame
+            R_prev = R_f.clone();
+            t_prev = t_f.clone();
+
+        }                 
+
         //update true position
         double x_true, y_true, z_true;
         truePose(numFrame, x_true, y_true, z_true, true_pose);
+        // write the ground truth to the file
+        if (groundtruth_file.is_open()) {
+            groundtruth_file << numFrame << " " << x_true << " " << y_true << " " << z_true << std::endl;
+        }
+
         int x_true_int = int(x_true) + 300;
         int y_true_int = int(z_true) + 100;
         cv::circle(traj, cv::Point(x_true_int, y_true_int), 1, CV_RGB(0, 255, 0), 1.5);
@@ -182,8 +352,13 @@ int main(int argc, char** argv) {
 
         cv::waitKey(1);
         numFrame++;
-    }
 
+        // if (numFrame == 1700) {
+        //     g2o_file.close(); // Move this outside the loop, after it finishes.
+        //     break;
+        // }
+    }
+    g2o_file.close();
     clock_t end = clock();
     double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
     std::cout << "Total time taken: " << elapsed_secs << "s" << std::endl;

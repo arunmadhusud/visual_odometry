@@ -2,3 +2,5 @@ build*/
 data_dir/
 DBoW2/
 small_voc.yml.gz
+trajectory.g2o
+groundtruth.txt

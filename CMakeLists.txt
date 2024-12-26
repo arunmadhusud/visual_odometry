@@ -11,9 +11,6 @@ project(vo_project)
 
 # Find OpenCV
 find_package(OpenCV 4 REQUIRED)
-# include_directories(${OpenCV_INCLUDE_DIRS})
-# link_directories(${OpenCV_LIBRARY_DIRS})
-# add_definitions(${OpenCV_DEFINITIONS})
 
 # Add DBoW2 subdirectory
 add_subdirectory(DBoW2)
@@ -22,11 +19,14 @@ add_subdirectory(DBoW2)
 find_package(yaml-cpp REQUIRED)
 include_directories(${yaml-cpp_INCLUDE_DIRS})
 
+# Find Eigen
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 # Executables for exercise
 add_executable(vo src/vo_main.cpp src/LatLong-UTMconversion.cpp)
 
 # Link libraries
-target_link_libraries(vo ${OpenCV_LIBRARIES} yaml-cpp DBoW2)
+target_link_libraries(vo ${OpenCV_LIBRARIES} yaml-cpp DBoW2 Eigen3::Eigen)
 
 # Include directories
 target_include_directories(vo PRIVATE
